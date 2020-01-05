@@ -142,8 +142,8 @@ void handle_read(void *ptr) {
             goto err;
         }
 
-        log_info("method == %.*s", (int)(request->method_end - request->request_start), (char *)request->request_start);
-        log_info("uri == %.*s", (int)(request->uri_end - request->uri_start), (char *)request->uri_start);
+        LOG_INFO("method == %.*s", (int)(request->method_end - request->request_start), (char *)request->request_start);
+        LOG_INFO("uri == %.*s", (int)(request->uri_end - request->uri_start), (char *)request->uri_start);
 
         ret = http_parse_request_body(request);
         if(ret == AGAIN) {
@@ -192,7 +192,7 @@ void handle_write(void *ptr) {
 
     ret = init_out_t(out, fd);
     if(ret != RETURN_OK) {
-        
+
     }
 
     parse_uri(request->uri_start, request->uri_end - request->uri_start, filename, NULL);

@@ -22,14 +22,14 @@ int init_request_t(http_request_t *r, int fd, int epfd, conf_t *cf) {
     r->root = cf->root;
     INIT_LIST_HEAD(&(r->list));
 
-    return OK;
+    return RETURN_OK;
 }
 
 int free_request_t(http_request_t *r) {
     // TODO
     // memory pool deallocate
     (void) r;
-    return OK;
+    return RETURN_OK;
 }
 
 int init_out_t(http_out_t *o, int fd) {
@@ -38,14 +38,14 @@ int init_out_t(http_out_t *o, int fd) {
     o->modified = 1;
     o->status = 0;
 
-    return OK;
+    return RETURN_OK;
 }
 
 int free_out_t(http_out_t *o) {
     // TODO
     // memory pool deallocate
     (void) o;
-    return OK;
+    return RETURN_OK;
 }
 
 
@@ -56,7 +56,7 @@ int http_close_conn(http_request_t *r) {
     // memory pool deallocate
     free(r);
 
-    return OK;
+    return RETURN_OK;
 }
 
 static int http_process_ignore(http_request_t *r, http_out_t *out, char *data, int len) {
@@ -65,7 +65,7 @@ static int http_process_ignore(http_request_t *r, http_out_t *out, char *data, i
     (void) data;
     (void) len;
     
-    return OK;
+    return RETURN_OK;
 }
 
 static int http_process_connection(http_request_t *r, http_out_t *out, char *data, int len) {
@@ -74,7 +74,7 @@ static int http_process_connection(http_request_t *r, http_out_t *out, char *dat
         out->keep_alive = 1;
     }
 
-    return OK;
+    return RETURN_OK;
 }
 
 static int http_process_if_modified_since(http_request_t *r, http_out_t *out, char *data, int len) {
@@ -83,7 +83,7 @@ static int http_process_if_modified_since(http_request_t *r, http_out_t *out, ch
 
     struct tm tm;
     if (strptime(data, "%a, %d %b %Y %H:%M:%S GMT", &tm) == (char *)NULL) {
-        return OK;
+        return RETURN_OK;
     }
     time_t client_time = mktime(&tm);
 
@@ -94,7 +94,7 @@ static int http_process_if_modified_since(http_request_t *r, http_out_t *out, ch
         out->status = HTTP_NOT_MODIFIED;
     }
     
-    return OK;
+    return RETURN_OK;
 }
 
 const char *get_shortmsg_from_status_code(int status_code) {
