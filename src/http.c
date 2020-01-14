@@ -5,9 +5,9 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <fcntl.h>
-#include <sys/epoll.h>
 #include <netinet/in.h>
 #include <string.h>
+#include <google/tcmalloc.h>
 
 #include "http.h"
 #include "http_parse.h"
@@ -18,6 +18,9 @@
 #include "ring_log.h"
 
 extern int epfd;
+extern conf_t cf;
+extern char conf_buf[BUFLEN];
+
 static const char* get_file_type(const char *type);
 static void parse_uri(char *uri, int length, char *filename, char *querystring);
 static void do_error(int fd, char *cause, char *errnum, char *shortmsg, char *longmsg);
@@ -72,7 +75,7 @@ void handle_conn(void *ptr) {
     }
     LOG_INFO("new connection fd %d", sockfd);
 
-    http_request_t *request = (http_request_t *)malloc(sizeof(http_request_t));
+    http_request_t *request = (http_request_t *)tc_malloc(sizeof(http_request_t));
     if(request == NULL) {
         LOG_ERROR("memory error");
         return;
@@ -103,7 +106,11 @@ void handle_read(void *ptr) {
     Epoll_Del(epfd, fd, &event);
 
     /* delete timer */
-    event_del_timer(request);
+    if(event_del_timer(request) < 0) {
+        /* delete failed */
+        tc_free(request);
+        return;
+    }
 
     for(;;) {
         plast = &request->buf[request->last % MAX_BUF];
@@ -111,7 +118,7 @@ void handle_read(void *ptr) {
 
         n = Read(fd, plast, remain_size);
         if(request->last - request->pos >= MAX_BUF) {
-
+            LOG_ERROR("request buffer overflow!");
         }
 
         if(n == 0) {
@@ -130,7 +137,7 @@ void handle_read(void *ptr) {
 
         request->last += n;
         if(request->last - request->pos >= MAX_BUF) {
-            
+            LOG_ERROR("request buffer overflow!");
         }
 
         LOG_INFO("ready to parse request line");
@@ -138,7 +145,7 @@ void handle_read(void *ptr) {
         if(ret == AGAIN) {
             continue;
         } else if (ret != RETURN_OK){
-            log_err("rc != OK");
+            LOG_ERROR("rc != OK");
             goto err;
         }
 
@@ -149,7 +156,7 @@ void handle_read(void *ptr) {
         if(ret == AGAIN) {
             continue;
         } else if (ret != RETURN_OK){
-            log_err("rc != OK");
+            LOG_ERROR("rc != OK");
             goto err;
         }
     }
@@ -164,7 +171,7 @@ void handle_read(void *ptr) {
 err:
     ret = http_close_conn(request);
     if(ret != 0) {
-        log_err("http close error");
+        LOG_ERROR("http close error");
     }
 }
 
@@ -184,7 +191,7 @@ void handle_write(void *ptr) {
     /*
     *   handle http header
     */
-    http_out_t *out = (http_out_t *)malloc(sizeof(http_out_t));
+    http_out_t *out = (http_out_t *)tc_malloc(sizeof(http_out_t));
     if (out == NULL) {
         LOG_ERROR("no enough space for http_out_t");
         exit(1);
@@ -192,7 +199,7 @@ void handle_write(void *ptr) {
 
     ret = init_out_t(out, fd);
     if(ret != RETURN_OK) {
-
+        LOG_ERROR("init http_out_t error");
     }
 
     parse_uri(request->uri_start, request->uri_end - request->uri_start, filename, NULL);
@@ -213,7 +220,7 @@ void handle_write(void *ptr) {
 
     http_handle_header(request, out);
     if(list_empty(&(request->list)) == 0) {
-
+        LOG_ERROR("After handle, header list should be empty");
     }
 
     if(out->status == 0) {
@@ -291,14 +298,14 @@ static void do_error(int fd, char *cause, char *errnum, char *shortmsg, char *lo
 {
     char header[MAXLINE], body[MAXLINE];
 
-    sprintf(body, "<html><title>Swift Error</title>");
+    sprintf(body, "<html><title>HXH Error</title>");
     sprintf(body, "%s<body bgcolor=""ffffff"">\n", body);
     sprintf(body, "%s%s: %s\n", body, errnum, shortmsg);
     sprintf(body, "%s<p>%s: %s\n</p>", body, longmsg, cause);
-    sprintf(body, "%s<hr><em>Swift web server</em>\n</body></html>", body);
+    sprintf(body, "%s<hr><em>HXH web server</em>\n</body></html>", body);
 
     sprintf(header, "HTTP/1.1 %s %s\r\n", errnum, shortmsg);
-    sprintf(header, "%sServer: Swift\r\n", header);
+    sprintf(header, "%sServer: HXH\r\n", header);
     sprintf(header, "%sContent-type: text/html\r\n", header);
     sprintf(header, "%sConnection: close\r\n", header);
     sprintf(header, "%sContent-length: %d\r\n\r\n", header, (int)strlen(body));
@@ -335,7 +342,7 @@ static void serve_static(int fd, char *filename, size_t filesize, http_out_t *ou
         sprintf(header, "%sLast-Modified: %s\r\n", header, buf);
     }
 
-    sprintf(header, "%sServer: Swift\r\n", header);
+    sprintf(header, "%sServer: HXH\r\n", header);
     sprintf(header, "%s\r\n", header);
 
     n = Write(fd, header, strlen(header));

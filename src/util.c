@@ -183,7 +183,7 @@ int open_listenfd(int port)
     serveraddr.sin_family = AF_INET; 
     serveraddr.sin_addr.s_addr = htonl(INADDR_ANY); 
     serveraddr.sin_port = htons((unsigned short)port); 
-    if (bind(listenfd, (struct sockaddr *)&serveraddr, sizeof(serveraddr)) < 0)
+    if (Bind(listenfd, (struct sockaddr *)&serveraddr, sizeof(serveraddr)) < 0)
 	    return -1;
 
     /* Make it a listening socket ready to accept connection requests */
@@ -254,8 +254,24 @@ int read_conf(char *filename, conf_t *cf, char *buf, int len) {
             cf->port = atoi(delim_pos + 1);     
         }
 
+        if (strncmp("loglevel", cur_pos, 8) == 0) {
+            cf->loglevel = atoi(delim_pos + 1);     
+        }
+
         if (strncmp("threadnum", cur_pos, 9) == 0) {
             cf->thread_num = atoi(delim_pos + 1);
+        }
+
+        if (strncmp("ipaddr", cur_pos, 6) == 0) {
+            cf->ipaddr = delim_pos + 1;
+        }
+
+        if (strncmp("progname", cur_pos, 8) == 0) {
+            cf->progname = delim_pos + 1;
+        }
+
+        if (strncmp("logdir", cur_pos, 6) == 0) {
+            cf->logdir = delim_pos + 1;
         }
 
         cur_pos += line_len;

@@ -1,8 +1,10 @@
 #include <unistd.h>
 #include <stdlib.h>
+#include <google/tcmalloc.h>
 #include <errno.h>
 #include "epoll.h"
 
+int epfd;
 struct epoll_event *events;
 
 int Epoll_Create(int flags) {
@@ -12,7 +14,7 @@ int Epoll_Create(int flags) {
         return -1;
     }
 
-    events = (struct epoll_event *)malloc(sizeof(struct epoll_event) * MAXEVENTS);
+    events = (struct epoll_event *)tc_malloc(sizeof(struct epoll_event) * MAXEVENTS);
     if(events == NULL) {
         perror("memory error");
         return -1;

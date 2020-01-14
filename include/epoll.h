@@ -3,7 +3,7 @@
 
 #include <sys/epoll.h>
 
-#define MAXEVENTS 1024
+#define MAXEVENTS (102400 * 5)
 
 extern int epfd;
 

@@ -1,4 +1,6 @@
 #include <stdlib.h>
+#include <google/tcmalloc.h>
+
 #include "threadpool.h"
 
 // counting index
@@ -9,7 +11,7 @@ uint32_t countToIndex(uint32_t count) {
 // create thread pool
 void create_thread(thread_pool_t *threadpool, int thread_size) {
 
-    threadpool->threads = (pthread_t *)malloc(sizeof(pthread_t) * thread_size);
+    threadpool->threads = (pthread_t *)tc_malloc(sizeof(pthread_t) * thread_size);
     
     for(int i = 0; i < thread_size; i++) {
         pthread_create(&threadpool->threads[i], NULL, worker, NULL);

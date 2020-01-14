@@ -1,3 +1,5 @@
+#include <google/tcmalloc.h>
+
 #include "http.h"
 #include "http_parse.h"
 
@@ -355,7 +357,7 @@ int http_parse_request_body(http_request_t *request) {
             if(ch == LF) {
                 state = crlf;
                 // save the current http header
-                hd = (http_header_t *)malloc(sizeof(http_header_t));
+                hd = (http_header_t *)tc_malloc(sizeof(http_header_t));
                 hd->key_start = request->cur_header_key_start;
                 hd->key_end = request->cur_header_key_end;
                 hd->value_start = request->cur_header_value_start;

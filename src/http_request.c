@@ -1,5 +1,7 @@
 #include <unistd.h>
 #include <string.h>
+#include <google/tcmalloc.h>
+
 #include "http.h"
 #include "http_request.h"
 
@@ -26,9 +28,9 @@ int init_request_t(http_request_t *r, int fd, int epfd, conf_t *cf) {
 }
 
 int free_request_t(http_request_t *r) {
-    // TODO
-    // memory pool deallocate
     (void) r;
+    tc_free(r);
+
     return RETURN_OK;
 }
 
@@ -42,19 +44,14 @@ int init_out_t(http_out_t *o, int fd) {
 }
 
 int free_out_t(http_out_t *o) {
-    // TODO
-    // memory pool deallocate
     (void) o;
+    tc_free(o);
     return RETURN_OK;
 }
 
-
 int http_close_conn(http_request_t *r) {
-    
     close(r->fd);
-    // TODO
-    // memory pool deallocate
-    free(r);
+    tc_free(r);
 
     return RETURN_OK;
 }
@@ -138,6 +135,6 @@ void http_handle_header(http_request_t *request, http_out_t *out) {
 
         /* delete it from the original list */
         list_del(pos);
-        free(hd);
+        tc_free(hd);
     }
 }

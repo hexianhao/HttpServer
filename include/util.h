@@ -3,9 +3,6 @@
 
 #include <sys/socket.h>
 
-#define PORT_NUM 80
-#define SERV_IP "192.168.8.100"
-
 // max number of listen queue
 #define LISTENQ     1024
 
@@ -20,8 +17,12 @@
 
 struct conf_s {
     void *root;
+    void *progname;
+    void *logdir;
+    void *ipaddr;
     int port;
     int thread_num;
+    int loglevel;
 };
 
 typedef struct conf_s conf_t;

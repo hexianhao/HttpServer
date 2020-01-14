@@ -57,7 +57,7 @@ typedef struct http_request_s {
     void *cur_header_value_end;
 
     rbtree_node_t timer;
-    int timer_set;
+    int timerset;
 
 } http_request_t;
 

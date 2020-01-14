@@ -5,27 +5,16 @@
 #include <sys/stat.h>
 #include <errno.h>
 #include <assert.h>
+#include <google/tcmalloc.h>
 
 #include "ring_log.h"
 
-pthread_key_t global_log_key;
-static pthread_once_t log_key_once = PTHREAD_ONCE_INIT;
-
-static void log_key_destructor(void *data) {
-	free(data);
-}
-
-static void log_key_creator(void) {
-	assert(pthread_key_create(&global_log_key, log_key_destructor) == 0);
-	assert(pthread_setspecific(global_log_key, NULL) == 0);
-
-	return;
-}
+// declare ring log and it's singleton
+ring_log_t *log;
 
 static ring_log_t *ins() {
-    return pthread_getspecific(global_log_key);
+    return log;
 }
-
 
 /********************************utc_timer******************************/
 void reset_utc_format(utc_timer_t *utc_timer) {
@@ -105,7 +94,7 @@ int init_cell_buffer(cell_buffer_t *buf, uint32_t len) {
     buf->total_len = len;
     buf->used_len = 0;
 
-    buf->data = (char *)malloc(sizeof(char) * len);
+    buf->data = (char *)tc_malloc(sizeof(char) * len);
     if(buf->data == NULL) {
         perror("allocate buffer failed");
         return -1;
@@ -149,14 +138,11 @@ void buf_persist(cell_buffer_t *buf, FILE* fp)
 
 /*******************************ring long******************************/
 void init_ring_log() {
-    ring_log_t *log = (ring_log_t *)malloc(sizeof(ring_log_t));
+    ring_log_t *log = (ring_log_t *)tc_malloc(sizeof(ring_log_t));
     if(log == NULL) {
         printf("cannot create ring log\n");
         return;
     }
-
-    log_key_creator();
-    assert(pthread_setspecific(global_log_key, log) == 0);
 
     log->buff_cnt = 3;
     log->curr_buf = NULL;
@@ -166,23 +152,27 @@ void init_ring_log() {
     log->log_err_sec = 0;
     log->env_ok = 0;
     log->level = INFO;
+    log->buff_len = BUFF_LENGTH;
     init_utc_timer(&log->utc_timer);
 
     //create double linked list
-    cell_buffer_t *head = (cell_buffer_t *)malloc(sizeof(log->buff_len));
+    cell_buffer_t *head = (cell_buffer_t *)tc_malloc(sizeof(cell_buffer_t));
     if(head == NULL) {
         fprintf(stderr, "no space to allocate cell_buffer\n");
         return;
     }
+    init_cell_buffer(head, log->buff_len);
 
     cell_buffer_t *current;
     cell_buffer_t *prev = head;
-    for(int i = 1; i < log->buff_len; i++) {
-        current = (cell_buffer_t *)malloc(sizeof(log->buff_len));
+    for(int i = 1; i < log->buff_cnt; i++) {
+        current = (cell_buffer_t *)tc_malloc(sizeof(cell_buffer_t));
         if(current == NULL) {
             fprintf(stderr, "no space to allocate cell_buffer\n");
             return;
         }
+        init_cell_buffer(current, log->buff_len);
+
         current->prev = prev;
         prev->next = current;
         prev = current;
@@ -197,6 +187,9 @@ void init_ring_log() {
 }
 
 void init_path(const char* log_dir, const char* prog_name, int level) {
+    // firstly, create ring log
+    init_ring_log();
+
     ring_log_t *log = ins();
     if(log == NULL) {
         return;
@@ -333,7 +326,10 @@ void log_append(const char* lvl, const char* format, ...) {
                     log->curr_buf = next_buf;
                     log->log_err_sec = curr_sec;
                 } else {
-                    cell_buffer_t *new_buffer = (cell_buffer_t *)malloc(sizeof(log->buff_len));
+                    // allocate new cell_buffer, and init it
+                    cell_buffer_t *new_buffer = (cell_buffer_t *)tc_malloc(sizeof(cell_buffer_t));
+                    init_cell_buffer(new_buffer, log->buff_len);
+
                     log->buff_cnt += 1;
                     new_buffer->prev = log->curr_buf;
                     log->curr_buf->next = new_buffer;
@@ -430,4 +426,11 @@ int decis_file(int year, int mon, int day) {
         log->log_cnt = 1;
     }
     return 1;
+}
+
+// persistence thread
+void* be_thdo(void* args) {
+    // the thread only persist log
+    log_persist();
+    return NULL;
 }

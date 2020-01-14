@@ -96,9 +96,6 @@ typedef struct ring_log_s {
     
 }ring_log_t;
 
-// singleton
-extern pthread_key_t global_log_key;
-
 ring_log_t *ins();
 void init_ring_log();
 void init_path(const char* log_dir, const char* prog_name, int level);
@@ -106,6 +103,8 @@ int get_level();
 void log_persist();
 void log_append(const char* lvl, const char* format, ...);
 int decis_file(int year, int mon, int day);
+// persistence thread
+void* be_thdo(void* args);
 
 #define LOG_MEM_SET(mem_lmt) \
     do \

@@ -24,7 +24,7 @@ void timeout_handle(http_request_t *);
 
 
 /* 从定时器中移除事件 */
-static inline void
+static inline int
 event_del_timer(http_request_t *request)
 {
     LOG_INFO("event timer del: %d: %M",
@@ -32,8 +32,18 @@ event_del_timer(http_request_t *request)
 
     pthread_mutex_lock(&event_timer_mutex);
 
+    if(!request->timerset) {
+        /*
+        *   request->timerset=0, 说明request->timer被删除
+        */
+        pthread_mutex_unlock(&event_timer_mutex);
+        return -1;
+    }
+
     /* 从红黑树中移除指定事件的节点对象 */
     rbtree_delete(&event_timer_rbtree, &request->timer);
+    /* 删除后，timerset要置为0 */
+    request->timerset = 0;
 
     pthread_mutex_unlock(&event_timer_mutex);
 
@@ -41,6 +51,7 @@ event_del_timer(http_request_t *request)
     request->timer.right = NULL;
     request->timer.parent = NULL;
 
+    return 0;
 }
 
 /* 将事件添加到定时器中 */
@@ -63,6 +74,8 @@ event_add_timer(http_request_t *request, uint64_t timer)
 
     /* 将事件对象节点插入到红黑树中 */
     rbtree_insert(&event_timer_rbtree, &request->timer);
+    /* timerset=1, 表示request->timer在红黑树上 */
+    request->timerset = 1;
 
     pthread_mutex_unlock(&event_timer_mutex);
 
