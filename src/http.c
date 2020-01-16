@@ -7,7 +7,7 @@
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <string.h>
-#include <google/tcmalloc.h>
+#include <gperftools/tcmalloc.h>
 
 #include "http.h"
 #include "http_parse.h"
@@ -80,8 +80,8 @@ void handle_conn(void *ptr) {
         LOG_ERROR("memory error");
         return;
     }
-
-    init_request_t(request, sockfd, 1, NULL);
+    
+    init_request_t(request, sockfd, epfd, &cf);
     event.data.ptr = (void *)request;
     event.events = EPOLLIN | EPOLLET | EPOLLONESHOT;
 
@@ -180,7 +180,6 @@ void handle_write(void *ptr) {
     http_request_t *request = (http_request_t *)ptr;
     int fd = request->fd;
     int ret;
-    ssize_t n;
     char filename[SHORTLINE];
     struct stat sbuf;
 
@@ -201,7 +200,7 @@ void handle_write(void *ptr) {
     if(ret != RETURN_OK) {
         LOG_ERROR("init http_out_t error");
     }
-
+    
     parse_uri(request->uri_start, request->uri_end - request->uri_start, filename, NULL);
 
     if(stat(filename, &sbuf) < 0) {
@@ -269,7 +268,7 @@ static void parse_uri(char *uri, int uri_length, char *filename, char *querystri
     if(querystring) {
         //TODO
     }
-
+    
     strcpy(filename, ROOT);
 
     // uri_length can not be too long
@@ -320,7 +319,7 @@ static void do_error(int fd, char *cause, char *errnum, char *shortmsg, char *lo
 static void serve_static(int fd, char *filename, size_t filesize, http_out_t *out) {
     char header[MAXLINE];
     char buf[SHORTLINE];
-    size_t n;
+    ssize_t n;
     struct tm tm;
     
     const char *file_type;

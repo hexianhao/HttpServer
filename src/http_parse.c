@@ -1,4 +1,4 @@
-#include <google/tcmalloc.h>
+#include <gperftools/tcmalloc.h>
 
 #include "http.h"
 #include "http_parse.h"
@@ -89,6 +89,7 @@ int http_parse_request_line(http_request_t *request) {
             if ((ch < 'A' || ch > 'Z') && ch != '_') {
                 return HTTP_PARSE_INVALID_METHOD;
             }
+            break;
         
         /* space* before URI */
         case spaces_before_uri:

@@ -1,6 +1,6 @@
 #include <unistd.h>
 #include <string.h>
-#include <google/tcmalloc.h>
+#include <gperftools/tcmalloc.h>
 
 #include "http.h"
 #include "http_request.h"
@@ -79,7 +79,7 @@ static int http_process_if_modified_since(http_request_t *r, http_out_t *out, ch
     (void) len;
 
     struct tm tm;
-    if (strptime(data, "%a, %d %b %Y %H:%M:%S GMT", &tm) == (char *)NULL) {
+    if (strptime(data, "%a, %d %b %Y %H:%M:%S GMT", &tm) == NULL) {
         return RETURN_OK;
     }
     time_t client_time = mktime(&tm);

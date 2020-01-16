@@ -1,11 +1,23 @@
 #include <unistd.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <sys/socket.h>
 #include <sys/select.h>
 #include <netinet/in.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <string.h>
+
 #include "util.h"
+
+int Socket(int family, int type, int protocol) {
+    int fd = socket(family, type, protocol);
+    if(fd == -1) {
+        perror("create socket");
+        exit(-1);
+    }
+    return fd;
+}
 
 int Bind(int sockfd, const struct sockaddr *myaddr, socklen_t addrlen) {
     int ret = bind(sockfd, myaddr, addrlen);
@@ -201,14 +213,14 @@ int set_socket_non_blocking(int fd) {
     int flags, s;
     flags = fcntl(fd, F_GETFL, 0);
     if (flags == -1) {
-        log_err("fcntl");
+        perror("fcntl");
         return -1;
     }
 
     flags |= O_NONBLOCK;
     s = fcntl(fd, F_SETFL, flags);
     if (s == -1) {
-        log_err("fcntl");
+        perror("fcntl");
         return -1;
     }
 
@@ -223,7 +235,7 @@ int set_socket_non_blocking(int fd) {
 int read_conf(char *filename, conf_t *cf, char *buf, int len) {
     FILE *fp = fopen(filename, "r");
     if (!fp) {
-        log_err("cannot open config file: %s", filename);
+        printf("cannot open config file: %s", filename);
         return CONF_ERROR;
     }
 

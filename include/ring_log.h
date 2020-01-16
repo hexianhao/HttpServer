@@ -7,6 +7,8 @@
 #include <string.h>
 #include <pthread.h>
 #include <sys/types.h>
+#include <sys/syscall.h>
+#define gettid() syscall(__NR_gettid)
 
 #define MEM_USE_LIMIT (3u * 1024 * 1024 * 1024)//3GB
 #define LOG_USE_LIMIT (1u * 1024 * 1024 * 1024)//1GB
@@ -96,7 +98,6 @@ typedef struct ring_log_s {
     
 }ring_log_t;
 
-ring_log_t *ins();
 void init_ring_log();
 void init_path(const char* log_dir, const char* prog_name, int level);
 int get_level();

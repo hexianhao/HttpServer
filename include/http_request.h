@@ -3,6 +3,8 @@
 
 #include <errno.h>
 #include <time.h>
+#include <math.h>
+
 #include "http.h"
 #include "list.h"
 #include "util.h"

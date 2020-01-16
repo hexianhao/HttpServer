@@ -1,6 +1,7 @@
 #ifndef __TIMER_H
 #define __TIMER_H
 
+#include <sys/time.h>
 #include <pthread.h>
 #include "rbtree.h"
 #include "ring_log.h"
@@ -58,9 +59,12 @@ event_del_timer(http_request_t *request)
 static inline void
 event_add_timer(http_request_t *request, uint64_t timer)
 {
-    uint64_t      key;
-    uint64_t      curr_msec;
-    int64_t       diff;
+    uint64_t        key;
+    uint64_t        curr_msec;
+    struct timeval  tv;
+
+    gettimeofday(&tv, NULL);
+    curr_msec = tv.tv_sec * 1000 + tv.tv_usec / 1000;
 
     /* 设置事件对象节点的键值 */
     key = curr_msec + timer;

@@ -1,5 +1,5 @@
 #include <stdlib.h>
-#include <google/tcmalloc.h>
+#include <gperftools/tcmalloc.h>
 
 #include "threadpool.h"
 
@@ -14,7 +14,7 @@ void create_thread(thread_pool_t *threadpool, int thread_size) {
     threadpool->threads = (pthread_t *)tc_malloc(sizeof(pthread_t) * thread_size);
     
     for(int i = 0; i < thread_size; i++) {
-        pthread_create(&threadpool->threads[i], NULL, worker, NULL);
+        pthread_create(&threadpool->threads[i], NULL, worker, (void *)threadpool);
         pthread_detach(threadpool->threads[i]);
     }
 }

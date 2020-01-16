@@ -5,7 +5,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <google/tcmalloc.h>
+#include <gperftools/tcmalloc.h>
 
 #include "http.h"
 #include "http_request.h"
@@ -34,7 +34,7 @@ static const struct option long_options[]=
 
 static void usage() {
    fprintf(stderr,
-	"zaver [option]... \n"
+	"httpserver [option]... \n"
 	"  -c|--conf <config file>  Specify config file. Default ./httpserver.conf.\n"
 	"  -?|-h|--help             This information.\n"
 	"  -V|--version             Display program version.\n"
@@ -117,12 +117,12 @@ int main(int argc, char* argv[]) {
     thread_pool_t pool;
     bzero(&pool, sizeof(pool));
     create_thread(&pool, cf.thread_num);
-    
-    // init timer
-    event_timer_init();
 
     // init log
     LOG_INIT(cf.logdir, cf.progname, cf.loglevel);
+
+    // init timer
+    event_timer_init();
 
     LOG_INFO("httpserver started.");
     uint64_t timer;
@@ -139,16 +139,18 @@ int main(int argc, char* argv[]) {
             fd = r->fd;
             // init task
             threadpool_task_t task;
-            task.arg = (void *)r;
 
-            if(fd == listenfd) {    
+            if(fd == listenfd) {  
+                task.arg = (void *)&listenfd;  
                 task.call_back = handle_conn;
                 addtask(&pool, task);
             } else {
                 if(events[i].events & EPOLLIN) {
+                    task.arg = (void *)r;
                     task.call_back = handle_read;
                     addtask(&pool, task);
                 } else if(events[i].events & EPOLLOUT) {
+                    task.arg = (void *)r;
                     task.call_back = handle_write;
                     addtask(&pool, task);
                 }

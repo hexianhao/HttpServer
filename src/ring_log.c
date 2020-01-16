@@ -5,15 +5,15 @@
 #include <sys/stat.h>
 #include <errno.h>
 #include <assert.h>
-#include <google/tcmalloc.h>
+#include <gperftools/tcmalloc.h>
 
 #include "ring_log.h"
 
 // declare ring log and it's singleton
-ring_log_t *log;
+static ring_log_t *RING_LOG;
 
 static ring_log_t *ins() {
-    return log;
+    return RING_LOG;
 }
 
 /********************************utc_timer******************************/
@@ -138,22 +138,22 @@ void buf_persist(cell_buffer_t *buf, FILE* fp)
 
 /*******************************ring long******************************/
 void init_ring_log() {
-    ring_log_t *log = (ring_log_t *)tc_malloc(sizeof(ring_log_t));
-    if(log == NULL) {
+    ring_log_t *rlog = (ring_log_t *)tc_malloc(sizeof(ring_log_t));
+    if(rlog == NULL) {
         printf("cannot create ring log\n");
         return;
     }
 
-    log->buff_cnt = 3;
-    log->curr_buf = NULL;
-    log->persist_buf = NULL;
-    log->fp = NULL;
-    log->log_cnt = 0;
-    log->log_err_sec = 0;
-    log->env_ok = 0;
-    log->level = INFO;
-    log->buff_len = BUFF_LENGTH;
-    init_utc_timer(&log->utc_timer);
+    rlog->buff_cnt = 3;
+    rlog->curr_buf = NULL;
+    rlog->persist_buf = NULL;
+    rlog->fp = NULL;
+    rlog->log_cnt = 0;
+    rlog->log_err_sec = 0;
+    rlog->env_ok = 0;
+    rlog->level = INFO;
+    rlog->buff_len = BUFF_LENGTH;
+    init_utc_timer(&rlog->utc_timer);
 
     //create double linked list
     cell_buffer_t *head = (cell_buffer_t *)tc_malloc(sizeof(cell_buffer_t));
@@ -161,17 +161,17 @@ void init_ring_log() {
         fprintf(stderr, "no space to allocate cell_buffer\n");
         return;
     }
-    init_cell_buffer(head, log->buff_len);
+    init_cell_buffer(head, rlog->buff_len);
 
     cell_buffer_t *current;
     cell_buffer_t *prev = head;
-    for(int i = 1; i < log->buff_cnt; i++) {
+    for(int i = 1; i < rlog->buff_cnt; i++) {
         current = (cell_buffer_t *)tc_malloc(sizeof(cell_buffer_t));
         if(current == NULL) {
             fprintf(stderr, "no space to allocate cell_buffer\n");
             return;
         }
-        init_cell_buffer(current, log->buff_len);
+        init_cell_buffer(current, rlog->buff_len);
 
         current->prev = prev;
         prev->next = current;
@@ -180,86 +180,88 @@ void init_ring_log() {
     prev->next = head;
     head->prev = prev;
 
-    log->curr_buf = head;
-    log->persist_buf = head;
+    rlog->curr_buf = head;
+    rlog->persist_buf = head;
 
-    log->pid = getpid();
+    rlog->pid = getpid();
+
+    RING_LOG = rlog;
 }
 
 void init_path(const char* log_dir, const char* prog_name, int level) {
     // firstly, create ring log
     init_ring_log();
 
-    ring_log_t *log = ins();
-    if(log == NULL) {
+    ring_log_t *rlog = ins();
+    if(rlog == NULL) {
         return;
     }
 
-    pthread_mutex_lock(&log->mutex);
+    pthread_mutex_lock(&rlog->mutex);
 
-    strncpy(log->log_dir, log_dir, 128);
+    strncpy(rlog->log_dir, log_dir, 128);
     //name format:  name_year-mon-day-t[tid].log.n
-    strncpy(log->prog_name, prog_name, 128);
+    strncpy(rlog->prog_name, prog_name, 128);
 
-    mkdir(log->log_dir, 0777);
+    mkdir(rlog->log_dir, 0777);
     //查看是否存在此目录、目录下是否允许创建文件
-    if(access(log->log_dir, F_OK | W_OK) == -1) {
-        fprintf(stderr, "logdir: %s error: %s\n", log->log_dir, strerror(errno));
+    if(access(rlog->log_dir, F_OK | W_OK) == -1) {
+        fprintf(stderr, "logdir: %s error: %s\n", rlog->log_dir, strerror(errno));
     } else {
-        log->env_ok = 1;
+        rlog->env_ok = 1;
     }
 
     if (level > TRACE)
         level = TRACE;
     if (level < FATAL)
         level = FATAL;
-    log->level = level;
+    rlog->level = level;
 
-    pthread_mutex_unlock(&log->mutex);
+    pthread_mutex_unlock(&rlog->mutex);
 }
 
 int get_level() {
-    ring_log_t *log = ins();
-    return log->level;
+    ring_log_t *rlog = ins();
+    return rlog->level;
 }
 
 void log_persist() {
-    ring_log_t *log = ins();
-    if(log == NULL) {
+    ring_log_t *rlog = ins();
+    if(rlog == NULL) {
         return;
     }
 
     while(1) 
     {
         //check if persist_buf need to be persist
-        pthread_mutex_lock(&log->mutex);
-        if(log->persist_buf->status == FREE) {
+        pthread_mutex_lock(&rlog->mutex);
+        if(rlog->persist_buf->status == FREE) {
             struct timespec tsp;
             struct timeval now;
             gettimeofday(&now, NULL);
             tsp.tv_sec = now.tv_sec;
             tsp.tv_nsec = now.tv_usec * 1000;   //nanoseconds
             tsp.tv_sec += BUFF_WAIT_TIME;   // wait for 1 seconds
-            pthread_cond_timedwait(&log->cond, &log->mutex, &tsp);
+            pthread_cond_timedwait(&rlog->cond, &rlog->mutex, &tsp);
         }
 
-        if(buf_empty(log->persist_buf)) 
+        if(buf_empty(rlog->persist_buf)) 
         {
             //give up, go to next turn
-            pthread_mutex_unlock(&log->mutex);
+            pthread_mutex_unlock(&rlog->mutex);
             continue;
         }
 
-        if(log->persist_buf->status == FREE) {
-            assert(log->curr_buf == log->persist_buf);
-            log->curr_buf->status = FULL;
-            log->curr_buf = log->curr_buf->next;
+        if(rlog->persist_buf->status == FREE) {
+            assert(rlog->curr_buf == rlog->persist_buf);
+            rlog->curr_buf->status = FULL;
+            rlog->curr_buf = rlog->curr_buf->next;
         }
 
-        int year = log->utc_timer.year;
-        int mon = log->utc_timer.mon;
-        int day = log->utc_timer.day;
-        pthread_mutex_unlock(&log->mutex);
+        int year = rlog->utc_timer.year;
+        int mon = rlog->utc_timer.mon;
+        int day = rlog->utc_timer.day;
+        pthread_mutex_unlock(&rlog->mutex);
 
         //decision which file to write
         if (!decis_file(year, mon, day)) {
@@ -267,31 +269,31 @@ void log_persist() {
         }
 
         //write
-        buf_persist(log->persist_buf, log->fp);
-        fflush(log->fp);
+        buf_persist(rlog->persist_buf, rlog->fp);
+        fflush(rlog->fp);
 
-        pthread_mutex_lock(&log->mutex);
-        buf_clear(log->persist_buf);
-        log->persist_buf = log->persist_buf->next;
-        pthread_mutex_unlock(&log->mutex);
+        pthread_mutex_lock(&rlog->mutex);
+        buf_clear(rlog->persist_buf);
+        rlog->persist_buf = rlog->persist_buf->next;
+        pthread_mutex_unlock(&rlog->mutex);
     }
 
 }
 
 void log_append(const char* lvl, const char* format, ...) {
-    ring_log_t *log = ins();
-    if(log == NULL) {
+    ring_log_t *rlog = ins();
+    if(rlog == NULL) {
         return;
     }
 
     int ms;
-    uint64_t curr_sec = get_curr_time(&log->utc_timer, &ms);
-    if(log->log_err_sec && curr_sec - log->log_err_sec < RELOG_THRESOLD) {
+    uint64_t curr_sec = get_curr_time(&rlog->utc_timer, &ms);
+    if(rlog->log_err_sec && curr_sec - rlog->log_err_sec < RELOG_THRESOLD) {
         return;
     }
 
     char log_line[LOG_LEN_LIMIT];
-    int head_len = snprintf(log_line, LOG_LEN_LIMIT, "%s[%s.%03d]", lvl, log->utc_timer.utc_format, ms);
+    int head_len = snprintf(log_line, LOG_LEN_LIMIT, "%s[%s.%03d]", lvl, rlog->utc_timer.utc_format, ms);
 
     va_list arg_ptr;
     va_start(arg_ptr, format);
@@ -303,127 +305,127 @@ void log_append(const char* lvl, const char* format, ...) {
 
     uint32_t len = head_len + body_len;
 
-    log->log_err_sec = 0;
+    rlog->log_err_sec = 0;
     int notify_back = 0;
 
-    pthread_mutex_lock(&log->mutex);
-    if(log->curr_buf->status == FREE && avail_len(log->curr_buf) >= len) {
-        buf_append(log->curr_buf, log_line, len);
+    pthread_mutex_lock(&rlog->mutex);
+    if(rlog->curr_buf->status == FREE && avail_len(rlog->curr_buf) >= len) {
+        buf_append(rlog->curr_buf, log_line, len);
     }
     else {
         //1. curr_buf->status = cell_buffer::FREE but curr_buf->avail_len() < len
         //2. curr_buf->status = cell_buffer::FULL
-        if(log->curr_buf->status == FREE) {
-            log->curr_buf->status = FULL;
-            cell_buffer_t *next_buf = log->curr_buf->next;
+        if(rlog->curr_buf->status == FREE) {
+            rlog->curr_buf->status = FULL;
+            cell_buffer_t *next_buf = rlog->curr_buf->next;
             // notify backend thread
             notify_back = 1;
 
             //it suggest that this buffer is under the persist job
             if(next_buf->status == FULL) {
                 //if mem use < MEM_USE_LIMIT, allocate new cell_buffer
-                if(log->buff_len * (log->buff_cnt + 1) > MEM_USE_LIMIT) {
-                    log->curr_buf = next_buf;
-                    log->log_err_sec = curr_sec;
+                if(rlog->buff_len * (rlog->buff_cnt + 1) > MEM_USE_LIMIT) {
+                    rlog->curr_buf = next_buf;
+                    rlog->log_err_sec = curr_sec;
                 } else {
                     // allocate new cell_buffer, and init it
                     cell_buffer_t *new_buffer = (cell_buffer_t *)tc_malloc(sizeof(cell_buffer_t));
-                    init_cell_buffer(new_buffer, log->buff_len);
+                    init_cell_buffer(new_buffer, rlog->buff_len);
 
-                    log->buff_cnt += 1;
-                    new_buffer->prev = log->curr_buf;
-                    log->curr_buf->next = new_buffer;
+                    rlog->buff_cnt += 1;
+                    new_buffer->prev = rlog->curr_buf;
+                    rlog->curr_buf->next = new_buffer;
                     new_buffer->next = next_buf;
                     next_buf->prev = new_buffer;
-                    log->curr_buf = new_buffer;
+                    rlog->curr_buf = new_buffer;
                 }
             } else {
                 //next buffer is free, we can use it
-                log->curr_buf = next_buf;
+                rlog->curr_buf = next_buf;
             }
 
-            if(!log->log_err_sec) {
-                buf_append(log->curr_buf, log_line, len);
+            if(!rlog->log_err_sec) {
+                buf_append(rlog->curr_buf, log_line, len);
             }
         }
         else { //curr_buf->status == cell_buffer::FULL, assert persist is on here too!
-            log->log_err_sec = curr_sec;
+            rlog->log_err_sec = curr_sec;
         }
     }
-    pthread_mutex_unlock(&log->mutex);
+    pthread_mutex_unlock(&rlog->mutex);
     if(notify_back) {
-        pthread_cond_signal(&log->cond);
+        pthread_cond_signal(&rlog->cond);
     }
 }
 
 int decis_file(int year, int mon, int day) {
-    ring_log_t *log = ins();
-    if(log == NULL) {
-        return;
+    ring_log_t *rlog = ins();
+    if(rlog == NULL) {
+        return -1;
     }
 
-    if(!log->env_ok) {
-        if(log->fp) {
-            fclose(log->fp);
+    if(!rlog->env_ok) {
+        if(rlog->fp) {
+            fclose(rlog->fp);
         }
-        log->fp = fopen("/dev/null", "w");
-        return log->fp != NULL;
+        rlog->fp = fopen("/dev/null", "w");
+        return rlog->fp != NULL;
     }
 
-    if(log->fp == NULL) {
-        log->year = year;
-        log->mon = mon;
-        log->day = day;
+    if(rlog->fp == NULL) {
+        rlog->year = year;
+        rlog->mon = mon;
+        rlog->day = day;
         char log_path[256] = {};
-        sprintf(log_path, "%s/%s.%d%02d%02d.%u.log", log->log_dir, log->prog_name, log->year, 
-                                                     log->mon, log->day, log->pid);
-        log->fp = fopen(log_path, "w");
-        if(log->fp == NULL) {
-            fprintf(stderr, "logdir: %s open error\n", log->log_dir);
+        sprintf(log_path, "%s/%s.%d%02d%02d.%u.log", rlog->log_dir, rlog->prog_name, rlog->year, 
+                                                     rlog->mon, rlog->day, rlog->pid);
+        rlog->fp = fopen(log_path, "w");
+        if(rlog->fp == NULL) {
+            fprintf(stderr, "logdir: %s open error\n", rlog->log_dir);
             return 0;
         }
-        log->log_cnt += 1;
+        rlog->log_cnt += 1;
     }
-    else if(log->day != day) {
-        fclose(log->fp);
+    else if(rlog->day != day) {
+        fclose(rlog->fp);
         char log_path[256] = {};
-        log->year = year;
-        log->mon = mon;
-        log->day = day;
-        sprintf(log_path, "%s/%s.%d%02d%02d.%u.log", log->log_dir, log->prog_name, log->year, 
-                                                     log->mon, log->day, log->pid);
-        log->fp = fopen(log_path, "w");
-        if(log->fp == NULL) {
-            fprintf(stderr, "logdir: %s open error\n", log->log_dir);
+        rlog->year = year;
+        rlog->mon = mon;
+        rlog->day = day;
+        sprintf(log_path, "%s/%s.%d%02d%02d.%u.log", rlog->log_dir, rlog->prog_name, rlog->year, 
+                                                     rlog->mon, rlog->day, rlog->pid);
+        rlog->fp = fopen(log_path, "w");
+        if(rlog->fp == NULL) {
+            fprintf(stderr, "logdir: %s open error\n", rlog->log_dir);
             return 0;
         }
-        log->log_cnt = 1;
+        rlog->log_cnt = 1;
     }
-    else if(ftell(log->fp) >= LOG_USE_LIMIT) {
-        fclose(log->fp);
+    else if(ftell(rlog->fp) >= LOG_USE_LIMIT) {
+        fclose(rlog->fp);
         char old_path[256] = {};
         char new_path[256] = {};
         //mv xxx.log.[i] xxx.log.[i + 1]
-        for(int i = log->log_cnt - 1; i > 0; i--) {
-            sprintf(old_path, "%s/%s.%d%02d%02d.%u.log.%d", log->log_dir, log->prog_name, log->year, 
-                                                            log->mon, log->day, log->pid, i);
-            sprintf(new_path, "%s/%s.%d%02d%02d.%u.log.%d", log->log_dir, log->prog_name, log->year, 
-                                                            log->mon, log->day, log->pid, i + 1);
+        for(int i = rlog->log_cnt - 1; i > 0; i--) {
+            sprintf(old_path, "%s/%s.%d%02d%02d.%u.log.%d", rlog->log_dir, rlog->prog_name, rlog->year, 
+                                                            rlog->mon, rlog->day, rlog->pid, i);
+            sprintf(new_path, "%s/%s.%d%02d%02d.%u.log.%d", rlog->log_dir, rlog->prog_name, rlog->year, 
+                                                            rlog->mon, rlog->day, rlog->pid, i + 1);
             rename(old_path, new_path);
         }
         //mv xxx.log xxx.log.1
-        sprintf(old_path, "%s/%s.%d%02d%02d.%u.log", log->log_dir, log->prog_name, log->year, 
-                                                     log->mon, log->day, log->pid);
-        sprintf(new_path, "%s/%s.%d%02d%02d.%u.log.1", log->log_dir, log->prog_name, log->year, 
-                                                       log->mon, log->day, log->pid);
+        sprintf(old_path, "%s/%s.%d%02d%02d.%u.log", rlog->log_dir, rlog->prog_name, rlog->year, 
+                                                     rlog->mon, rlog->day, rlog->pid);
+        sprintf(new_path, "%s/%s.%d%02d%02d.%u.log.1", rlog->log_dir, rlog->prog_name, rlog->year, 
+                                                       rlog->mon, rlog->day, rlog->pid);
         rename(old_path, new_path);
 
-        log->fp = fopen(old_path, "w");
-        if(log->fp == NULL) {
-            fprintf(stderr, "logdir: %s open error\n", log->log_dir);
+        rlog->fp = fopen(old_path, "w");
+        if(rlog->fp == NULL) {
+            fprintf(stderr, "logdir: %s open error\n", rlog->log_dir);
             return 0;
         }
-        log->log_cnt = 1;
+        rlog->log_cnt = 1;
     }
     return 1;
 }
