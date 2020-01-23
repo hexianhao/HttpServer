@@ -114,9 +114,7 @@ int main(int argc, char* argv[]) {
     Epoll_Add(epfd, listenfd, &event);
 
     // create thread pool
-    thread_pool_t pool;
-    bzero(&pool, sizeof(pool));
-    create_thread(&pool, cf.thread_num);
+    tpool_t *tpool = tpool_init(cf.thread_num);
 
     // init log
     LOG_INIT(cf.logdir, cf.progname, cf.loglevel);
@@ -137,22 +135,14 @@ int main(int argc, char* argv[]) {
         for(int i = 0; i < nready; i++) {
             http_request_t *r = (http_request_t *)events[i].data.ptr;
             fd = r->fd;
-            // init task
-            threadpool_task_t task;
 
             if(fd == listenfd) {  
-                task.arg = (void *)&listenfd;  
-                task.call_back = handle_conn;
-                addtask(&pool, task);
+                tpool_add_work(tpool, handle_conn, (void *)&listenfd);
             } else {
                 if(events[i].events & EPOLLIN) {
-                    task.arg = (void *)r;
-                    task.call_back = handle_read;
-                    addtask(&pool, task);
+                    tpool_add_work(tpool, handle_read, (void *)r);
                 } else if(events[i].events & EPOLLOUT) {
-                    task.arg = (void *)r;
-                    task.call_back = handle_write;
-                    addtask(&pool, task);
+                    tpool_add_work(tpool, handle_write, (void *)r);
                 }
             }
         }
@@ -160,6 +150,8 @@ int main(int argc, char* argv[]) {
         // check timeout event
         event_expire_timers();
     }
+
+    tpool_destroy(tpool);
 
     return 0;
 }

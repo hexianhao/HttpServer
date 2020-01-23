@@ -129,6 +129,7 @@ int http_parse_request_line(http_request_t *request) {
                 default:
                     return HTTP_PARSE_INVALID_REQUEST;
             }
+            break;
         
         case http_H:
             switch (ch) {
@@ -268,7 +269,7 @@ done:
 
     request->state = start;
 
-    return 1;
+    return RETURN_OK;
 } 
 
 
@@ -401,5 +402,5 @@ done:
     request->pos = i + 1;
     request->state = start;
 
-    return 1;
+    return RETURN_OK;
 }

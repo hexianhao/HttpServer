@@ -54,7 +54,7 @@ mime_type_t mime[] = {
 void handle_conn(void *ptr) {
     int listenfd = *(int *)ptr;
     struct sockaddr_in cliaddr;
-    socklen_t len;
+    socklen_t len = 1;
     struct epoll_event event;
     int ret;
 
@@ -134,7 +134,7 @@ void handle_read(void *ptr) {
             }
             break;
         }
-
+        
         request->last += n;
         if(request->last - request->pos >= MAX_BUF) {
             LOG_ERROR("request buffer overflow!");
@@ -163,7 +163,7 @@ void handle_read(void *ptr) {
 
     event.data.ptr = ptr;
     event.events = EPOLLOUT | EPOLLET | EPOLLONESHOT;
-
+    
     Epoll_Add(epfd, fd, &event);
 
     return;
@@ -289,7 +289,7 @@ static void parse_uri(char *uri, int uri_length, char *filename, char *querystri
         strcat(filename, "index.html");
     }
 
-    LOG_ERROR("request file %s", filename);
+    LOG_INFO("request file %s", filename);
     return;
 }
 

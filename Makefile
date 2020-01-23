@@ -24,3 +24,4 @@ $(BIN_DIR)%.o: $(SRC_DIR)%.c
 
 clean:
 	@rm -f $(BIN_DIR)*
+	@rm -f log/*

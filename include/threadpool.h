@@ -9,43 +9,71 @@
 #include <stdio.h>
 #include <unistd.h>
 
-#define TASKQUE_SIZE (1<<10)
-#define CAS(ptr, oldVal, newVal) __sync_bool_compare_and_swap(ptr, oldVal, newVal)
+enum {
+    TPOOL_ERROR,
+    TPOOL_WARNING,
+    TPOOL_INFO,
+    TPOOL_DEBUG
+};
+
+#define debug(level, ...) do { \
+    if (level <= TPOOL_DEBUG) {\
+        flockfile(stdout); \
+        printf("###%p.%s: ", (void *)pthread_self(), __func__); \
+        printf(__VA_ARGS__); \
+        putchar('\n'); \
+        fflush(stdout); \
+        funlockfile(stdout);\
+    }\
+} while (0)
+
+#define WORK_QUEUE_POWER 8
+#define WORK_QUEUE_SIZE (1 << WORK_QUEUE_POWER)
+#define WORK_QUEUE_MASK (WORK_QUEUE_SIZE - 1)
+
+/*
+ * Just main thread can increase thread->in, we can make it safely.
+ * However,  thread->out may be increased in both main thread and
+ * worker thread during balancing thread load when new threads are added
+ * to our thread pool...
+*/
+#define thread_out_val(thread)      (__sync_val_compare_and_swap(&(thread)->out, 0, 0))
+#define thread_queue_len(thread)   ((thread)->in - thread_out_val(thread))
+#define thread_queue_empty(thread) (thread_queue_len(thread) == 0)
+#define thread_queue_full(thread)  (thread_queue_len(thread) == WORK_QUEUE_SIZE)
+#define queue_offset(val)           ((val) & WORK_QUEUE_MASK)
+
+typedef struct tpool_work {
+    void    (*call_back)(void *);
+    void    *arg;
+} tpool_work_t;
 
 typedef struct {
-    void (* call_back)(void *arg);
-    void *arg;
-}threadpool_task_t;
+    pthread_t    tid;
+    int          shutdown;
 
-typedef struct thread_pool_s {
-    threadpool_task_t Queue[TASKQUE_SIZE];
-    // 定义TASKQUE_COUNT组线程，每组线程有THREAD_SIZE大小
-    pthread_t *threads;
-    // 读指针
-    uint32_t ReadIndex;
-    // 写指针
-    uint32_t WriteIndex;
-    /*
-    最后一个已经完成入列操作的元素在数组中的下标. 如果它的值跟writeIndex不一致,
-    表明有写请求尚未完成.这意味着,有写请求成功申请了空间但数据还没完全写进队列.
-    所以如果有线程要读取,必须要等到写线程将数完全据写入到队列之后.
-    */
-    uint32_t maxReadIndex;
+    uint8_t in;        /* offset from start of work_queue where to put work next */
+    uint8_t out;   /* offset from start of work_queue where to get work next */
+    tpool_work_t work_queue[WORK_QUEUE_SIZE];
 
-}thread_pool_t;
+} thread_t;
 
+typedef struct tpool_s tpool_t;
+typedef thread_t* (*schedule_thread_func)(tpool_t *tpool);
+struct tpool_s {
+    int                 num_threads;
+    thread_t            *threads;
+    schedule_thread_func schedule_thread;
+};
 
-// counting index
-uint32_t countToIndex(uint32_t count);
+// inital
+tpool_t *tpool_init(int num_worker_threads);
 // add
-void addtask(thread_pool_t *threadpool, threadpool_task_t task);
-// get task
-threadpool_task_t fetch(thread_pool_t *threadpool);
-// create thread pool
-void create_thread(thread_pool_t *threadpool, int thread_size);
+int tpool_add_work(tpool_t *tpool, void (* call_back)(void *), void *arg);
+// destroy
+void tpool_destroy(tpool_t *tpool);
 
 // 工作线程
-void *worker(void *arg);
-
+void *tpool_thread(void *arg);
 
 #endif
